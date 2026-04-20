@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Build artifacts
+dist/
+build/
+*.spec
+
+# Runtime data (user-specific)
+data/snapname.db
+snapname.log
+snapname.lock
+settings.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -1,0 +1,3 @@
+# Dev / build dependencies — not needed at runtime
+-r requirements.txt
+pyinstaller==6.19.0
