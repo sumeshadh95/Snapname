@@ -12,6 +12,7 @@ SnapName is a Windows 10/11 tray app for students who collect screenshots while 
 - Never overwrites existing files. Duplicate names become `_2`, `_3`, and so on.
 - Falls back to timestamp filenames only when no useful window or OCR context is found.
 - Lets you pause, resume, configure settings, view history, and undo renames from the tray.
+- Includes a lightweight dashboard for setup, recent history, and live active-window diagnostics.
 
 ## Prerequisites
 
@@ -47,6 +48,12 @@ Open Settings from the tray menu. You can change:
 - OCR confidence threshold
 
 Settings are saved to `settings.json` beside the app.
+
+## Dashboard
+
+Open **Open Dashboard** from the tray menu to configure SnapName interactively. Closing the dashboard hides it back to the tray; screenshot watching continues in the background.
+
+The Windows tab shows the current foreground window and visible top-level windows using direct Win32 calls. SnapName does not load pywin32, PyWinCtl, or a .NET helper process, which keeps the background memory footprint low.
 
 ## Build The EXE
 

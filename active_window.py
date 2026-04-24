@@ -11,6 +11,16 @@ LOGGER = logging.getLogger(__name__)
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
 _CHAT_APPS = {"chatgpt", "codex", "claude", "gemini", "copilot"}
+_TITLE_APP_PRIORITY = (
+    "github copilot",
+    "chatgpt",
+    "openai",
+    "codex",
+    "claude",
+    "gemini",
+    "copilot",
+)
+GW_OWNER = 4
 
 # Window title patterns for known applications
 _EXPLORER_PATTERNS = [
@@ -51,6 +61,7 @@ _APP_NAME_MAP = {
     "file explorer": "explorer",
     "chatgpt": "chatgpt",
     "openai": "chatgpt",
+    "github copilot": "copilot",
     "codex": "codex",
     "claude": "claude",
     "gemini": "gemini",
@@ -111,6 +122,15 @@ class ActiveWindowInfo:
     keywords: list[str]
     process_name: str = ""
     executable_path: str = ""
+    window_class: str = ""
+
+
+@dataclass(frozen=True)
+class VisibleWindowInfo:
+    raw_title: str
+    app_name: str
+    process_name: str = ""
+    window_class: str = ""
 
 
 def get_active_window_title() -> str:
@@ -149,6 +169,7 @@ def get_active_window_info() -> ActiveWindowInfo:
     hwnd = _get_foreground_hwnd()
     title = _get_window_title(hwnd)
     process_name, executable_path = _get_window_process(hwnd)
+    window_class = _get_window_class(hwnd)
     if not title and not process_name:
         return ActiveWindowInfo(raw_title="", app_name="", keywords=[])
 
@@ -161,7 +182,49 @@ def get_active_window_info() -> ActiveWindowInfo:
         keywords=keywords,
         process_name=process_name,
         executable_path=executable_path,
+        window_class=window_class,
     )
+
+
+def list_visible_windows(limit: int = 20) -> list[VisibleWindowInfo]:
+    """Return visible top-level windows using direct Win32 calls."""
+    windows: list[VisibleWindowInfo] = []
+    try:
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+
+        enum_windows_proc = ctypes.WINFUNCTYPE(
+            wintypes.BOOL,
+            wintypes.HWND,
+            wintypes.LPARAM,
+        )
+
+        def _callback(hwnd: int, lparam: int) -> bool:
+            if len(windows) >= limit:
+                return False
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            if user32.GetWindow(hwnd, GW_OWNER):
+                return True
+
+            title = _get_window_title(hwnd).strip()
+            if not title:
+                return True
+            process_name, _ = _get_window_process(hwnd)
+            app_name = _detect_app_name(title, process_name)
+            windows.append(
+                VisibleWindowInfo(
+                    raw_title=title,
+                    app_name=app_name,
+                    process_name=process_name,
+                    window_class=_get_window_class(hwnd),
+                )
+            )
+            return True
+
+        user32.EnumWindows(enum_windows_proc(_callback), 0)
+    except Exception:
+        LOGGER.debug("Could not enumerate visible windows", exc_info=True)
+    return windows
 
 
 def _get_window_process(hwnd: int) -> tuple[str, str]:
@@ -224,8 +287,26 @@ def _get_window_process(hwnd: int) -> tuple[str, str]:
         return "", ""
 
 
+def _get_window_class(hwnd: int) -> str:
+    if not hwnd:
+        return ""
+    try:
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        buffer = ctypes.create_unicode_buffer(256)
+        user32.GetClassNameW(hwnd, buffer, len(buffer))
+        return buffer.value
+    except Exception:
+        LOGGER.debug("Could not read active window class", exc_info=True)
+        return ""
+
+
 def _detect_app_name(title: str, process_name: str = "") -> str:
     """Detect the application name from the window title."""
+    lower_title = title.lower()
+    for phrase in _TITLE_APP_PRIORITY:
+        if phrase in lower_title:
+            return _APP_NAME_MAP[phrase]
+
     process_key = process_name.lower().replace(" ", "")
     if process_key in _PROCESS_NAME_MAP:
         return _PROCESS_NAME_MAP[process_key]
@@ -233,7 +314,6 @@ def _detect_app_name(title: str, process_name: str = "") -> str:
         if process_phrase in process_key:
             return short_name
 
-    lower_title = title.lower()
     for phrase, short_name in _APP_NAME_MAP.items():
         if phrase in lower_title:
             return short_name

@@ -11,6 +11,11 @@ from pystray import Menu, MenuItem
 import tkinter as tk
 from tkinter import filedialog
 
+from gui.dashboard_window import (
+    DashboardCallbacks,
+    close_dashboard_window,
+    open_dashboard_window_threaded,
+)
 from gui.history_window import open_history_window_threaded
 from gui.settings_window import open_settings_window_threaded
 from history import HistoryDatabase
@@ -67,6 +72,7 @@ class TrayApp:
                 enabled=False,
             ),
             Menu.SEPARATOR,
+            MenuItem("Open Dashboard", self._open_dashboard, default=True),
             MenuItem("Set Destination Folder…", self._set_destination),
             MenuItem("Change Watch Folder…", self._set_watch_folder),
             MenuItem("Open Settings", self._open_settings),
@@ -93,6 +99,9 @@ class TrayApp:
         settings = self.settings_manager.load()
         return "Resume Watching" if not settings.enabled else "Pause Watching"
 
+    def _dashboard_status_text(self) -> str:
+        return self._status_text()
+
     def _destination_text(self) -> str:
         settings = self.settings_manager.load()
         dest = settings.destination_folder.strip()
@@ -109,6 +118,20 @@ class TrayApp:
             on_save=self.watcher.restart,
         )
 
+    def _open_dashboard(self, icon: Any = None, item: Any = None) -> None:
+        open_dashboard_window_threaded(
+            self.settings_manager,
+            self.history_database,
+            DashboardCallbacks(
+                get_status=self._dashboard_status_text,
+                on_settings_saved=self._on_dashboard_settings_saved,
+                on_pause=self._pause_from_dashboard,
+                on_resume=self._resume_from_dashboard,
+                on_undo_last=self._undo_last_from_dashboard,
+                on_quit=self._quit,
+            ),
+        )
+
     def _open_history(self, icon: Any = None, item: Any = None) -> None:
         open_history_window_threaded(self.history_database)
 
@@ -120,13 +143,30 @@ class TrayApp:
             self.watcher.resume()
         self.icon.update_menu()
 
+    def _pause_from_dashboard(self) -> None:
+        self.watcher.pause()
+        self.icon.update_menu()
+
+    def _resume_from_dashboard(self) -> None:
+        self.watcher.resume()
+        self.icon.update_menu()
+
+    def _on_dashboard_settings_saved(self) -> None:
+        self.watcher.restart()
+        self.icon.update_menu()
+
     def _undo_last(self, icon: Any = None, item: Any = None) -> None:
+        self._undo_last_from_dashboard()
+
+    def _undo_last_from_dashboard(self) -> str:
         result = self.history_database.undo_last_rename()
         self.set_status(result.message)
         self._notify(result.message)
+        return result.message
 
     def _quit(self, icon: Any = None, item: Any = None) -> None:
         LOGGER.info("Quitting SnapName")
+        close_dashboard_window()
         self.watcher.shutdown()
         self.icon.stop()
 
