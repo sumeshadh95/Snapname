@@ -45,8 +45,7 @@ class SettingsWindow:
         self.prefix_var.set(settings.prefix)
         self.append_timestamp_var.set(settings.append_timestamp)
         self.use_active_window_var.set(settings.use_active_window)
-        engine_name = "LLaVA" if settings.engine == "llava" else "Tesseract"
-        self.engine_var.set(engine_name)
+        self.engine_var.set("Tesseract (offline)")
         self.confidence_var.set(settings.confidence_threshold)
 
     def _build_ui(self) -> None:
@@ -105,7 +104,7 @@ class SettingsWindow:
         engine_dropdown = ttk.Combobox(
             frame,
             textvariable=self.engine_var,
-            values=("Tesseract", "LLaVA"),
+            values=("Tesseract (offline)",),
             state="readonly",
             width=20,
         )
@@ -186,11 +185,6 @@ class SettingsWindow:
         self.dest_folder_var.set("")
 
     def _save(self) -> None:
-        engine = (
-            "llava"
-            if self.engine_var.get().lower() == "llava"
-            else "tesseract"
-        )
         try:
             self.settings_manager.update(
                 watch_folder=self.folder_var.get(),
@@ -198,7 +192,7 @@ class SettingsWindow:
                 prefix=self.prefix_var.get(),
                 append_timestamp=self.append_timestamp_var.get(),
                 use_active_window=self.use_active_window_var.get(),
-                engine=engine,
+                engine="tesseract",
                 confidence_threshold=round(
                     float(self.confidence_var.get()),
                     2,

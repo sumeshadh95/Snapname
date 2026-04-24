@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -34,8 +35,8 @@ class OcrResult:
 class TesseractOcrEngine:
     def __init__(
         self,
-        min_word_confidence: float = 60.0,
-        config: str = "--oem 3 --psm 6",
+        min_word_confidence: float = 35.0,
+        config: str = "--oem 3 --psm 11",
     ) -> None:
         self.min_word_confidence = min_word_confidence
         self.config = config
@@ -79,13 +80,32 @@ class TesseractOcrEngine:
         return _parse_tesseract_data(data, self.min_word_confidence)
 
     def _configure_tesseract_command(self) -> None:
-        candidates = [
+        import sys
+
+        candidates: list[Path] = []
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            candidates.append(
+                Path(sys._MEIPASS) / "tesseract_engine" / "tesseract.exe"
+            )
+
+        candidates.append(
+            Path(__file__).resolve().parent
+            / "tesseract_engine"
+            / "tesseract.exe"
+        )
+
+        candidates.extend([
             Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe"),
             Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"),
-        ]
+        ])
         for candidate in candidates:
             if candidate.exists():
                 pytesseract.pytesseract.tesseract_cmd = str(candidate)
+                # Portable Tesseract needs an explicit tessdata directory.
+                tessdata_path = candidate.parent / "tessdata"
+                if tessdata_path.exists():
+                    os.environ["TESSDATA_PREFIX"] = str(tessdata_path)
+
                 LOGGER.info("Using Tesseract executable: %s", candidate)
                 return
 

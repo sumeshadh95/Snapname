@@ -12,7 +12,7 @@ from typing import Any
 
 
 LOGGER = logging.getLogger(__name__)
-VALID_ENGINES = {"tesseract", "llava"}
+VALID_ENGINES = {"tesseract"}
 DEFAULT_EXTENSIONS = [".png", ".jpg", ".jpeg"]
 
 
@@ -74,8 +74,6 @@ class AppSettings:
     timestamp_format: str
     max_filename_length: int
     engine: str
-    ollama_model: str
-    ollama_url: str
     confidence_threshold: float
     fallback_name_template: str
     file_extensions: list[str]
@@ -89,12 +87,10 @@ class AppSettings:
             watch_folder=default_watch_folder(),
             destination_folder="",
             prefix="",
-            append_timestamp=True,
+            append_timestamp=False,
             timestamp_format="%Y%m%d_%H%M%S",
             max_filename_length=60,
             engine="tesseract",
-            ollama_model="llava",
-            ollama_url="http://localhost:11434",
             confidence_threshold=0.4,
             fallback_name_template="screenshot_{timestamp}",
             file_extensions=DEFAULT_EXTENSIONS.copy(),
@@ -158,9 +154,6 @@ class AppSettings:
             timestamp_format=timestamp_format,
             max_filename_length=max_filename_length,
             engine=engine,
-            ollama_model=str(merged["ollama_model"]).strip() or "llava",
-            ollama_url=str(merged["ollama_url"]).strip()
-            or defaults.ollama_url,
             confidence_threshold=confidence_threshold,
             fallback_name_template=(
                 str(merged["fallback_name_template"]).strip()

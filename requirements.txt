@@ -1,7 +1,5 @@
 watchdog==6.0.0
 pytesseract==0.3.13
 Pillow==12.2.0
-nltk==3.9.4
 pystray==0.19.5
 plyer==2.1.0
-requests==2.33.1

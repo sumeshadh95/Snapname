@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Callable
 
 from history import HistoryDatabase
-from llava_engine import LlavaEngine
 from nlp_namer import KeywordResult, build_filename, extract_keywords
 from ocr_engine import OcrUnavailableError, TesseractOcrEngine
 from settings import SettingsManager
@@ -42,7 +41,6 @@ class ScreenshotPipeline:
         self.history_database = history_database
         self.status_callback = status_callback
         self.ocr_engine = TesseractOcrEngine()
-        self.llava_engine = LlavaEngine()
         self._lock = threading.RLock()
 
     def process_file(
@@ -91,38 +89,38 @@ class ScreenshotPipeline:
             engine_used = "tesseract"
             force_fallback = False
 
-            if settings.engine == "llava":
-                llava_result = self.llava_engine.describe_image(path, settings)
-                if llava_result.success:
-                    keyword_result = KeywordResult(llava_result.keywords, [])
-                    confidence = llava_result.confidence
-                    engine_used = "llava"
-                else:
-                    self._set_status("LLaVA unavailable; using Tesseract")
-
-            if engine_used != "llava":
-                try:
-                    ocr_result = self.ocr_engine.read_image(path)
-                    header_result = self.ocr_engine.read_header(path)
-                    keyword_result = extract_keywords(
-                        raw_text=ocr_result.raw_text,
-                        header_text=header_result.raw_text,
-                        active_window_keywords=window_keywords or [],
-                    )
-                    confidence = ocr_result.avg_confidence
-                    engine_used = "tesseract"
-                except OcrUnavailableError as exc:
-                    LOGGER.error("%s", exc)
-                    self._set_status("Tesseract missing; using fallback names")
-                    force_fallback = True
-                    engine_used = "tesseract"
-                    confidence = 0.0
-                except Exception:
-                    LOGGER.exception("Unexpected OCR failure for %s", path)
-                    self._set_status("OCR error; using fallback names")
-                    force_fallback = True
-                    engine_used = "tesseract"
-                    confidence = 0.0
+            try:
+                ocr_result = self.ocr_engine.read_image(path)
+                header_result = self.ocr_engine.read_header(path)
+                keyword_result = extract_keywords(
+                    raw_text=ocr_result.raw_text,
+                    header_text=header_result.raw_text,
+                    active_window_keywords=window_keywords or [],
+                )
+                confidence = ocr_result.avg_confidence
+                engine_used = "tesseract"
+            except OcrUnavailableError as exc:
+                LOGGER.error("%s", exc)
+                self._set_status("Tesseract missing; using window context")
+                keyword_result = extract_keywords(
+                    raw_text="",
+                    header_text="",
+                    active_window_keywords=window_keywords or [],
+                )
+                force_fallback = not keyword_result.keywords
+                engine_used = "window"
+                confidence = 0.0
+            except Exception:
+                LOGGER.exception("Unexpected OCR failure for %s", path)
+                self._set_status("OCR error; using window context")
+                keyword_result = extract_keywords(
+                    raw_text="",
+                    header_text="",
+                    active_window_keywords=window_keywords or [],
+                )
+                force_fallback = not keyword_result.keywords
+                engine_used = "window"
+                confidence = 0.0
 
             filename_result = build_filename(
                 keyword_result=keyword_result,
@@ -134,6 +132,11 @@ class ScreenshotPipeline:
             target_path = _unique_target_path(
                 path.with_name(filename_result.filename),
                 max_stem_length=settings.max_filename_length,
+            )
+            effective_confidence = (
+                max(confidence, settings.confidence_threshold)
+                if not filename_result.used_fallback
+                else confidence
             )
 
             if _same_path(path, target_path):
@@ -167,22 +170,9 @@ class ScreenshotPipeline:
                     f"Rename failed: {exc}",
                 )
 
-            try:
-                self.history_database.log_rename(
-                    original_name=original_name,
-                    new_name=target_path.name,
-                    folder_path=str(target_path.parent),
-                    engine_used=engine_used,
-                    confidence=confidence,
-                    keywords_found=filename_result.keywords,
-                )
-            except Exception:
-                LOGGER.exception("Rename succeeded but history logging failed")
-
-            # Move to destination folder if configured
             final_path = target_path
             dest_folder = settings.destination_folder.strip()
-            if dest_folder and Path(dest_folder) != target_path.parent:
+            if dest_folder and not _same_directory(Path(dest_folder), target_path.parent):
                 dest_dir = Path(dest_folder)
                 dest_dir.mkdir(parents=True, exist_ok=True)
                 dest_path = _unique_target_path(
@@ -201,6 +191,18 @@ class ScreenshotPipeline:
                     )
                     # File stays in original location with new name
 
+            try:
+                self.history_database.log_rename(
+                    original_name=original_name,
+                    new_name=final_path.name,
+                    folder_path=str(final_path.parent),
+                    engine_used=engine_used,
+                    confidence=effective_confidence,
+                    keywords_found=filename_result.keywords,
+                )
+            except Exception:
+                LOGGER.exception("Rename succeeded but history logging failed")
+
             self._notify(final_path.name)
             self._set_status("Active")
             return PipelineResult(
@@ -208,7 +210,7 @@ class ScreenshotPipeline:
                 path,
                 final_path,
                 engine_used,
-                confidence,
+                effective_confidence,
                 filename_result.keywords,
                 f"Renamed to {final_path.name}",
             )
@@ -289,3 +291,10 @@ def _same_path(left: Path, right: Path) -> bool:
         return os.path.samefile(left, right)
     except OSError:
         return str(left).lower() == str(right).lower()
+
+
+def _same_directory(left: Path, right: Path) -> bool:
+    try:
+        return left.resolve().samefile(right.resolve())
+    except OSError:
+        return str(left.resolve()).lower() == str(right.resolve()).lower()

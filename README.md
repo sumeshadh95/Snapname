@@ -7,20 +7,18 @@ SnapName is a Windows 10/11 tray app for students who collect screenshots while 
 ## What It Does
 
 - Watches your chosen screenshot folder in the background.
-- Uses local Tesseract OCR by default.
-- Extracts commands, errors, app names, file names, and technical keywords.
-- Optionally uses local Ollama with LLaVA for richer image understanding.
+- Uses Win32 foreground-window metadata plus local Tesseract OCR.
+- Extracts app names, chat/model labels, commands, errors, file names, and technical keywords.
 - Never overwrites existing files. Duplicate names become `_2`, `_3`, and so on.
-- Falls back to timestamp filenames when confidence is low.
+- Falls back to timestamp filenames only when no useful window or OCR context is found.
 - Lets you pause, resume, configure settings, view history, and undo renames from the tray.
 
 ## Prerequisites
 
 1. Install Python 3.10 or newer for development.
-2. Install Tesseract 5 for Windows from [UB Mannheim's Tesseract builds](https://github.com/UB-Mannheim/tesseract/wiki).
-3. During Tesseract setup, enable the option that adds Tesseract to PATH. If you skip that option, add the install folder, usually `C:\Program Files\Tesseract-OCR`, to PATH manually.
+2. Keep the bundled `tesseract_engine` folder beside the source tree for development builds. The released EXE embeds the English OCR runtime, so end users do not install Tesseract.
 
-Tesseract is required on the end user's machine even when running the packaged EXE. All screenshot processing stays local.
+All screenshot processing stays offline on your computer. SnapName does not use Ollama, cloud APIs, or downloaded NLTK models.
 
 ## Install For Development
 
@@ -28,10 +26,7 @@ Open PowerShell in the `snapname` folder:
 
 ```powershell
 pip install -r requirements.txt
-python -m nltk.downloader stopwords punkt punkt_tab averaged_perceptron_tagger averaged_perceptron_tagger_eng
 ```
-
-The prompt only needs `stopwords` and `punkt` for the baseline setup, but the tagger packages improve noun phrase fallback names. Newer NLTK versions may also require `punkt_tab` and `averaged_perceptron_tagger_eng`.
 
 ## Run
 
@@ -48,7 +43,7 @@ Open Settings from the tray menu. You can change:
 - Screenshot folder
 - Filename prefix, such as `cs301`
 - Timestamp behavior
-- Engine: Tesseract or LLaVA
+- Offline engine: foreground window context plus Tesseract
 - OCR confidence threshold
 
 Settings are saved to `settings.json` beside the app.
@@ -61,28 +56,20 @@ From the `snapname` folder:
 .\build.bat
 ```
 
-The packaged app is created at:
+The build verifies embedded OCR and creates:
 
 ```text
 dist\SnapName.exe
+dist\SnapName-portable.zip
 ```
 
-Copy the EXE wherever you want to run it. Keep Tesseract installed on the machine.
+Copy `SnapName.exe` wherever you want to run it, or upload `SnapName-portable.zip` to a GitHub Release. The build embeds `tesseract_engine`, so the EXE can run on a machine without a separate Tesseract install.
 
-## Optional LLaVA
-
-LLaVA runs locally through Ollama.
-
-1. Install Ollama from [ollama.com](https://ollama.com).
-2. Pull the local model:
+To verify a packaged build without starting the tray app:
 
 ```powershell
-ollama pull llava
+.\dist\SnapName.exe --self-test
 ```
-
-3. Open SnapName Settings and switch the engine to `LLaVA`.
-
-If Ollama is not running or the model is unavailable, SnapName falls back to Tesseract and logs the issue.
 
 ## Start With Windows
 
@@ -101,14 +88,14 @@ SnapName will start automatically the next time you sign in.
 
 ## Troubleshooting
 
-If screenshots are renamed as `screenshot_YYYYMMDD_HHMMSS.png`, OCR confidence is below your threshold or Tesseract is unavailable. Check `snapname.log`, then verify that Tesseract is installed and available from PowerShell:
+If screenshots are renamed as `screenshot_YYYYMMDD_HHMMSS.png`, SnapName could not find useful foreground-window context and OCR also returned no useful text. Check `snapname.log`, then verify that the bundled Tesseract exists:
 
 ```powershell
-tesseract --version
+.\tesseract_engine\tesseract.exe --version
 ```
 
-If the tray icon says Tesseract is missing, install Tesseract or repair PATH, then quit and restart SnapName.
+If the tray icon says Tesseract is missing during development, restore the `tesseract_engine` folder or install Tesseract to the normal Windows location, then quit and restart SnapName. Packaged releases include the English OCR runtime inside the EXE.
 
 ## Privacy
 
-SnapName does not upload screenshots. Tesseract OCR, NLTK keyword extraction, SQLite history, and optional Ollama/LLaVA processing all run on your computer.
+SnapName does not upload screenshots. Foreground-window detection, Tesseract OCR, keyword extraction, and SQLite history all run on your computer.

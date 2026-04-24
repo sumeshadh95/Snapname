@@ -128,9 +128,11 @@ class ScreenshotWatcher:
             try:
                 info = get_active_window_info()
                 window_keywords = info.keywords
-                if info.raw_title:
+                if info.raw_title or info.process_name:
                     LOGGER.info(
-                        "Active window at capture: %s", info.raw_title
+                        "Active window at capture: %s [%s]",
+                        info.raw_title or "(untitled)",
+                        info.app_name or info.process_name,
                     )
             except Exception:
                 LOGGER.debug(
