@@ -12,6 +12,15 @@ from settings import AppSettings
 
 LOGGER = logging.getLogger(__name__)
 MAX_KEYWORDS = 4
+AI_ASSISTANT_KEYWORDS = {"claude", "codex", "copilot", "gemini"}
+BARE_OCR_MODEL_NOISE = {
+    "claude",
+    "deepseek",
+    "gemini",
+    "llama",
+    "mistral",
+    "qwen",
+}
 TRUSTED_LOW_CONFIDENCE_SOURCES = {
     "active_window",
     "ai_model",
@@ -218,17 +227,15 @@ CHAT_CONTEXT_WORDS = {
     "chat",
     "newchat",
     "chatgpt",
-    "claude",
-    "gemini",
-    "copilot",
     "openai",
-    "codex",
 }
 
 AI_MODEL_PATTERN = re.compile(
-    r"\b(?P<family>gpt|claude|gemini|llama|mistral|qwen|deepseek|o[0-9])"
+    r"(?<![A-Za-z0-9_.])"
+    r"(?P<family>gpt|claude|gemini|llama|mistral|qwen|deepseek|o[0-9])"
     r"[\s_-]?"
-    r"(?P<version>[0-9]+(?:\.[0-9]+)?[a-z]?)?\b",
+    r"(?P<version>[0-9]+(?:\.[0-9]+)?[a-z]?)?"
+    r"(?![A-Za-z0-9_.-])",
     re.IGNORECASE,
 )
 
@@ -269,7 +276,22 @@ def extract_keywords(
         _add_active_window_candidates(
             active_window_keywords, candidates, seen
         )
-    _add_ai_model_candidates(combined_text, candidates, seen)
+    _add_ai_model_candidates(
+        header_text,
+        candidates,
+        seen,
+        priority=0,
+        weight=3.6,
+        source="ai_model",
+    )
+    _add_ai_model_candidates(
+        raw_text,
+        candidates,
+        seen,
+        priority=4,
+        weight=0.9,
+        source="ocr_ai_model",
+    )
     _add_chat_context_candidates(combined_text, candidates, seen)
     _add_cli_candidates(raw_text, candidates, seen)
     _add_error_candidates(combined_text, candidates, seen)
@@ -396,8 +418,10 @@ def _add_active_window_candidates(
         weight = 3.0
         if keyword == "folder":
             weight = 2.5
-        elif keyword.startswith("gpt") or keyword in {"chat", "codex"}:
-            weight = 3.4
+        elif keyword == "chat":
+            weight = 3.2
+        elif keyword.startswith("gpt") or keyword in AI_ASSISTANT_KEYWORDS:
+            weight = 3.7
         order = _add_candidate(
             candidates,
             seen,
@@ -413,19 +437,24 @@ def _add_ai_model_candidates(
     text: str,
     candidates: list[KeywordCandidate],
     seen: set[str],
+    priority: int,
+    weight: float,
+    source: str,
 ) -> None:
     order = len(candidates)
     for match in AI_MODEL_PATTERN.finditer(text):
         model = _normalize_model_match(match)
         if not model:
             continue
+        if source != "ai_model" and model in BARE_OCR_MODEL_NOISE:
+            continue
         order = _add_candidate(
             candidates,
             seen,
             model,
-            priority=0,
-            weight=3.6,
-            source="ai_model",
+            priority=priority,
+            weight=weight,
+            source=source,
             order=order,
         )
 
@@ -663,6 +692,8 @@ def _normalize_model_match(match: re.Match[str]) -> str:
 
 
 def _looks_like_model_noise(token: str) -> bool:
+    if token in BARE_OCR_MODEL_NOISE:
+        return True
     return bool(
         re.fullmatch(
             r"(?:gpt|claude|gemini|llama|mistral|qwen|deepseek)"

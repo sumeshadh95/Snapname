@@ -39,6 +39,33 @@ class NlpNamerTests(unittest.TestCase):
         )
         self.assertEqual(sanitize_fragment("..."), "")
 
+    def test_sidebar_gemini_folder_does_not_outrank_copilot(self) -> None:
+        settings = replace(
+            AppSettings.defaults(),
+            append_timestamp=False,
+            confidence_threshold=0.4,
+        )
+        keywords = extract_keywords(
+            raw_text=(
+                "New chat GitHub Copilot\n"
+                "Home Gallery Desktop .gemini Screenshots Project\n"
+                "SnapName SnapName-portable settings"
+            ),
+            header_text="New chat · GitHub Copilot",
+            active_window_keywords=["chat", "github", "copilot", "chrome"],
+        )
+
+        result = build_filename(
+            keywords,
+            settings,
+            ".png",
+            confidence=0.91,
+            now=datetime(2026, 4, 24, 23, 20, 0),
+        )
+
+        self.assertNotIn("gemini", keywords.keywords)
+        self.assertEqual(result.filename, "copilot_chat_github_chrome.png")
+
 
 if __name__ == "__main__":
     unittest.main()
